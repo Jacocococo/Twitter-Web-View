@@ -19,6 +19,7 @@ import android.provider.MediaStore;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
+import android.webkit.ConsoleMessage;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -33,6 +34,7 @@ import android.widget.FrameLayout;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationManagerCompat;
@@ -42,6 +44,8 @@ import java.io.File;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Timer;
+import java.util.TimerTask;
 
 public class MainActivity extends Activity {
 
@@ -52,10 +56,11 @@ public class MainActivity extends Activity {
     private ValueCallback<Uri[]> mUploadMessage;
     private String mCameraPhotoPath = null;
     private long size = 0;
-    private Notification noti;
-    private NotificationManagerCompat notiManager;
     private AudioManager audioManager;
-    private Button reload;
+
+    private Timer reload;
+    private boolean runningTask = false;
+    private boolean error = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -63,19 +68,8 @@ public class MainActivity extends Activity {
         setContentView(R.layout.main_activity);
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
         audioManager = (AudioManager) getApplicationContext().getSystemService(AUDIO_SERVICE);
-        reload = findViewById(R.id.reload);
-        reload.setOnClickListener(e -> {
-            webView.loadUrl("https://twitter.com/");
-        });
         webView = findViewById(R.id.webView);
-        notiManager = NotificationManagerCompat.from(this);
-        NotificationChannel channel = new NotificationChannel("notis", "Notifications", NotificationManager.IMPORTANCE_DEFAULT);
-        notiManager.createNotificationChannel(channel);
-        noti = new Notification.Builder(getApplication().getApplicationContext(), channel.getId())
-                .setSmallIcon(R.drawable.twitter_web_view_icon)
-                .setContentTitle("Twitter Web View")
-                .setContentText("New Notification on Twitter")
-                .build();
+        reload = new Timer();
 
         verifyPermissions();
     }
@@ -103,14 +97,28 @@ public class MainActivity extends Activity {
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
                 super.onReceivedError(view, request, error);
-                view.loadUrl("about:blank");
-                reload.setVisibility(View.VISIBLE);
+                MainActivity.this.error = true;
+                if(!runningTask) {
+                    runningTask = true;
+                    reload.schedule(new TimerTask() {
+                        public void run() {
+                            runOnUiThread(() -> webView.reload());
+                            runningTask = false;
+                        }
+                    }, 5000);
+                }
             }
 
             @Override
-            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                reload.setVisibility(View.INVISIBLE);
-                return super.shouldOverrideUrlLoading(view, request);
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                if(runningTask && !error) {
+                    reload.cancel();
+                    reload.purge();
+                    reload = new Timer();
+                    runningTask = false;
+                }
+                error = false;
             }
         });
         webSettings = webView.getSettings();
@@ -122,7 +130,6 @@ public class MainActivity extends Activity {
         webView.setWebChromeClient(new WebChromeClient() {
             private View mCustomView;
             private WebChromeClient.CustomViewCallback mCustomViewCallback;
-            protected FrameLayout mFullscreenContainer;
             private int mOriginalOrientation;
             private int mOriginalSystemUiVisibility;
 
