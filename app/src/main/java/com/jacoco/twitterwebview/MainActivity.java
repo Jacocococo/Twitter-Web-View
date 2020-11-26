@@ -2,9 +2,6 @@ package com.jacoco.twitterwebview;
 
 import android.Manifest;
 import android.app.Activity;
-import android.app.Notification;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
 import android.content.ClipData;
 import android.content.Context;
 import android.content.Intent;
@@ -12,6 +9,7 @@ import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.AudioManager;
+import android.net.ConnectivityManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
@@ -19,29 +17,22 @@ import android.provider.MediaStore;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
-import android.webkit.ConsoleMessage;
-import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
-import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.widget.Button;
 import android.widget.FrameLayout;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
-import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Timer;
@@ -60,7 +51,6 @@ public class MainActivity extends Activity {
 
     private Timer reload;
     private boolean runningTask = false;
-    private boolean error = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -97,28 +87,26 @@ public class MainActivity extends Activity {
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
                 super.onReceivedError(view, request, error);
-                MainActivity.this.error = true;
-                if(!runningTask) {
+                if(!runningTask && !isInternetAvailable() && !isNetworkConnected()) {
                     runningTask = true;
                     reload.schedule(new TimerTask() {
                         public void run() {
                             runOnUiThread(() -> webView.reload());
                             runningTask = false;
                         }
-                    }, 5000);
+                    }, 15000);
                 }
             }
 
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
-                if(runningTask && !error) {
+                if(runningTask && isInternetAvailable() && isNetworkConnected()) {
                     reload.cancel();
                     reload.purge();
                     reload = new Timer();
                     runningTask = false;
                 }
-                error = false;
             }
         });
         webSettings = webView.getSettings();
@@ -310,5 +298,21 @@ public class MainActivity extends Activity {
             mUploadMessage.onReceiveValue(results);
             mUploadMessage = null;
         }
+    }
+
+    public boolean isInternetAvailable() {
+        try {
+            InetAddress ipAddr = InetAddress.getByName("google.com");
+            return !ipAddr.equals("");
+
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean isNetworkConnected() {
+        ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+
+        return cm.getActiveNetworkInfo() != null && cm.getActiveNetworkInfo().isConnected();
     }
 }
