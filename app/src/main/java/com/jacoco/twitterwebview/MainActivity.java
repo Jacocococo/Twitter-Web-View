@@ -128,35 +128,14 @@ public class MainActivity extends Activity {
                 mUploadMessage = filePath;
                 Log.e("FileCooserParams => ", filePath.toString());
 
-                Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-                if (takePictureIntent.resolveActivity(getPackageManager()) != null) {
-                    File photoFile = null;
-                    try {
-                        photoFile = createImageFile();
-                        takePictureIntent.putExtra("PhotoPath", mCameraPhotoPath);
-                    } catch (IOException ex) {
-                        Log.e(TAG, "Unable to create Image File", ex);
-                    }
-
-                    if (photoFile != null) {
-                        mCameraPhotoPath = "file:" + photoFile.getAbsolutePath();
-                        takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, Uri.fromFile(photoFile));
-                    } else {
-                        takePictureIntent = null;
-                    }
-                }
+                Intent takePictureIntent = new Intent(MediaStore.AUTHORITY);
 
                 Intent contentSelectionIntent = new Intent(Intent.ACTION_GET_CONTENT);
                 contentSelectionIntent.addCategory(Intent.CATEGORY_OPENABLE);
                 contentSelectionIntent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-                contentSelectionIntent.setType("image/*");
+                contentSelectionIntent.setType("image/*,video/*");
 
-                Intent[] intentArray;
-                if (takePictureIntent != null) {
-                    intentArray = new Intent[]{takePictureIntent};
-                } else {
-                    intentArray = new Intent[2];
-                }
+                Intent[] intentArray = new Intent[]{takePictureIntent};
 
                 Intent chooserIntent = new Intent(Intent.ACTION_CHOOSER);
                 chooserIntent.putExtra(Intent.EXTRA_INTENT, contentSelectionIntent);
@@ -165,6 +144,7 @@ public class MainActivity extends Activity {
                 startActivityForResult(Intent.createChooser(chooserIntent, "Select images"), 1);
 
                 return true;
+
             }
 
             public Bitmap getDefaultVideoPoster()
@@ -218,13 +198,11 @@ public class MainActivity extends Activity {
     private void verifyPermissions() {
         String[] permissions =
                 {
-                        Manifest.permission.READ_EXTERNAL_STORAGE,
-                        Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                        Manifest.permission.CAMERA
+                    Manifest.permission.READ_EXTERNAL_STORAGE,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE
                 };
         if(ContextCompat.checkSelfPermission(this.getApplicationContext(), permissions[0]) == PackageManager.PERMISSION_GRANTED &&
-                ContextCompat.checkSelfPermission(this.getApplicationContext(), permissions[1]) == PackageManager.PERMISSION_GRANTED &&
-                ContextCompat.checkSelfPermission(this.getApplicationContext(), permissions[2]) == PackageManager.PERMISSION_GRANTED) {
+                ContextCompat.checkSelfPermission(this.getApplicationContext(), permissions[1]) == PackageManager.PERMISSION_GRANTED) {
             setupView();
         } else {
             ActivityCompat.requestPermissions(this, permissions, 1);
@@ -234,19 +212,6 @@ public class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         verifyPermissions();
-    }
-
-    private File createImageFile() throws IOException {
-        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-        String imageFileName = "JPEG_" + timeStamp + "_";
-        File storageDir = getApplication().getApplicationContext().getExternalFilesDir(
-                Environment.DIRECTORY_PICTURES);
-        File imageFile = File.createTempFile(
-                imageFileName,
-                ".jpg",
-                storageDir
-        );
-        return imageFile;
     }
 
     @Override
@@ -265,7 +230,7 @@ public class MainActivity extends Activity {
         }
 
         if (data != null || mCameraPhotoPath != null) {
-            Integer count = 0;
+            Integer count = 0; //fix fby https://github.com/nnian
             ClipData images = null;
             try {
                 images = data.getClipData();
@@ -279,6 +244,7 @@ public class MainActivity extends Activity {
                 count = images.getItemCount();
             }
             Uri[] results = new Uri[count];
+            // Check that the response is a good one
             if (resultCode == Activity.RESULT_OK) {
                 if (size != 0) {
                     // If there is not data, then we may have taken a photo
