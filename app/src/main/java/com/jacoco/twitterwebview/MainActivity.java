@@ -1,25 +1,22 @@
 package com.jacoco.twitterwebview;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.ClipData;
-import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.AudioManager;
-import android.net.ConnectivityManager;
 import android.net.Uri;
 import android.os.Bundle;
-import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
-import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -31,27 +28,15 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import java.io.File;
-import java.io.IOException;
-import java.net.InetAddress;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.Timer;
-import java.util.TimerTask;
 
 public class MainActivity extends Activity {
 
     private WebView webView;
-    private static final int INPUT_FILE_REQUEST_CODE = 1;
-    private static final String TAG = MainActivity.class.getSimpleName();
-    private WebSettings webSettings;
     private ValueCallback<Uri[]> mUploadMessage;
-    private String mCameraPhotoPath = null;
-    private long size = 0;
+    private final String mCameraPhotoPath = null;
     private AudioManager audioManager;
 
-    private Timer reload;
-    private boolean runningTask = false;
-
+    @SuppressLint("ClickableViewAccessibility")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -59,7 +44,14 @@ public class MainActivity extends Activity {
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
         audioManager = (AudioManager) getApplicationContext().getSystemService(AUDIO_SERVICE);
         webView = findViewById(R.id.webView);
-        reload = new Timer();
+
+        webView.setOnTouchListener(new OnSwipeTouchListener(MainActivity.this) {
+            public boolean onSwipeRight() {
+                webView.evaluateJavascript("if(document.querySelector(\"div[data-testid=\\\"app-bar-back\\\"]\")) document.querySelector(\"div[data-testid=\\\"app-bar-back\\\"]\").click()\n" +
+                                            "else if(document.querySelector(\"div[data-testid=\\\"DashButton_ProfileIcon_Link\\\"]\")) document.querySelector(\"div[data-testid=\\\"DashButton_ProfileIcon_Link\\\"]\").click()", null);
+                return true;
+            }
+        });
 
         verifyPermissions();
     }
@@ -84,34 +76,22 @@ public class MainActivity extends Activity {
 
     private void setupView() {
         webView.setWebViewClient(new WebViewClient() {
-            @Override
-            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                super.onReceivedError(view, request, error);
-                if(!runningTask && !isInternetAvailable() && !isNetworkConnected()) {
-                    runningTask = true;
-                    reload.schedule(new TimerTask() {
-                        public void run() {
-                            runOnUiThread(() -> webView.reload());
-                            runningTask = false;
-                        }
-                    }, 15000);
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                final String url = request.getUrl().toString();
+                if(url.contains("twitter.com")) {
+                    view.loadUrl(url);
+                } else {
+                    Intent i = new Intent(Intent.ACTION_VIEW, request.getUrl());
+                    startActivity(i);
                 }
-            }
-
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
-                if(runningTask && isInternetAvailable() && isNetworkConnected()) {
-                    reload.cancel();
-                    reload.purge();
-                    reload = new Timer();
-                    runningTask = false;
-                }
+                return true;
             }
         });
-        webSettings = webView.getSettings();
+        WebSettings webSettings = webView.getSettings();
         webSettings.setAppCacheEnabled(true);
-        webSettings.setCacheMode(webSettings.LOAD_CACHE_ELSE_NETWORK);
+        webSettings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+        webSettings.setDatabaseEnabled(true);
+        webSettings.setDomStorageEnabled(true);
         webSettings.setJavaScriptEnabled(true);
         webSettings.setLoadWithOverviewMode(true);
         webSettings.setAllowFileAccess(true);
@@ -216,7 +196,8 @@ public class MainActivity extends Activity {
 
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
-        if (requestCode != INPUT_FILE_REQUEST_CODE || mUploadMessage == null) {
+        long size = 0;
+        if (requestCode != 1 || mUploadMessage == null) {
             super.onActivityResult(requestCode, resultCode, data);
             return;
         }
@@ -229,8 +210,8 @@ public class MainActivity extends Activity {
             Log.e("Error!", "Error while opening image file" + e.getLocalizedMessage());
         }
 
-        if (data != null || mCameraPhotoPath != null) {
-            Integer count = 0; //fix fby https://github.com/nnian
+        if (data != null) {
+            int count = 0;
             ClipData images = null;
             try {
                 images = data.getClipData();
@@ -244,13 +225,9 @@ public class MainActivity extends Activity {
                 count = images.getItemCount();
             }
             Uri[] results = new Uri[count];
-            // Check that the response is a good one
             if (resultCode == Activity.RESULT_OK) {
                 if (size != 0) {
-                    // If there is not data, then we may have taken a photo
-                    if (mCameraPhotoPath != null) {
-                        results = new Uri[]{Uri.parse(mCameraPhotoPath)};
-                    }
+                    results = new Uri[]{Uri.parse(mCameraPhotoPath)};
                 } else if (data.getClipData() == null) {
                     results = new Uri[]{Uri.parse(data.getDataString())};
                 } else {
@@ -264,21 +241,5 @@ public class MainActivity extends Activity {
             mUploadMessage.onReceiveValue(results);
             mUploadMessage = null;
         }
-    }
-
-    public boolean isInternetAvailable() {
-        try {
-            InetAddress ipAddr = InetAddress.getByName("google.com");
-            return !ipAddr.equals("");
-
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private boolean isNetworkConnected() {
-        ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
-
-        return cm.getActiveNetworkInfo() != null && cm.getActiveNetworkInfo().isConnected();
     }
 }
