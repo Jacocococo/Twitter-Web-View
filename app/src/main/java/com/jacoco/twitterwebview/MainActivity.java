@@ -28,6 +28,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import java.io.File;
+import java.util.regex.Pattern;
 
 public class MainActivity extends Activity {
 
@@ -35,6 +36,7 @@ public class MainActivity extends Activity {
     private ValueCallback<Uri[]> mUploadMessage;
     private final String mCameraPhotoPath = null;
     private AudioManager audioManager;
+    private final Pattern photoUrl = Pattern.compile(".*/photo/\\d$");
 
     @SuppressLint("ClickableViewAccessibility")
     @Override
@@ -47,8 +49,11 @@ public class MainActivity extends Activity {
 
         webView.setOnTouchListener(new OnSwipeTouchListener(MainActivity.this) {
             public boolean onSwipeRight() {
+                if(photoUrl.matcher(webView.getUrl()).matches())
+                    return false;
                 webView.evaluateJavascript("if(document.querySelector(\"div[data-testid=\\\"app-bar-back\\\"]\")) document.querySelector(\"div[data-testid=\\\"app-bar-back\\\"]\").click()\n" +
-                                            "else if(document.querySelector(\"div[data-testid=\\\"DashButton_ProfileIcon_Link\\\"]\")) document.querySelector(\"div[data-testid=\\\"DashButton_ProfileIcon_Link\\\"]\").click()", null);
+                                            "else if(document.querySelector(\"div[data-testid=\\\"DashButton_ProfileIcon_Link\\\"]\")) document.querySelector(\"div[data-testid=\\\"DashButton_ProfileIcon_Link\\\"]\").click()",
+                        null);
                 return true;
             }
         });
