@@ -15,6 +15,7 @@ import android.provider.MediaStore;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
+import android.webkit.ConsoleMessage;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -91,6 +92,19 @@ public class MainActivity extends Activity {
                 }
                 return true;
             }
+
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                webView.evaluateJavascript("function removeAds() { " +
+                        "const element = document.querySelector(\"div[data-testid=\\\"placementTracking\\\"]\");" +
+                        "if(element) {" +
+                            "element.parentElement.remove()" +
+                        "}}", null);
+                webView.evaluateJavascript("new PerformanceObserver(removeAds).observe({type: 'largest-contentful-paint', buffered: true});", null);
+                webView.evaluateJavascript("document.addEventListener('scroll', () => {" +
+                        "clearTimeout(removeAds._tId);" +
+                        "removeAds._tId= setTimeout(removeAds, 100)})", null);
+            }
         });
         WebSettings webSettings = webView.getSettings();
         webSettings.setAppCacheEnabled(true);
@@ -132,16 +146,14 @@ public class MainActivity extends Activity {
 
             }
 
-            public Bitmap getDefaultVideoPoster()
-            {
+            public Bitmap getDefaultVideoPoster() {
                 if (mCustomView == null) {
                     return null;
                 }
                 return BitmapFactory.decodeResource(getApplicationContext().getResources(), 2130837573);
             }
 
-            public void onHideCustomView()
-            {
+            public void onHideCustomView() {
                 ((FrameLayout)getWindow().getDecorView()).removeView(this.mCustomView);
                 this.mCustomView = null;
                 getWindow().getDecorView().setSystemUiVisibility(this.mOriginalSystemUiVisibility);
@@ -150,10 +162,8 @@ public class MainActivity extends Activity {
                 this.mCustomViewCallback = null;
             }
 
-            public void onShowCustomView(View paramView, WebChromeClient.CustomViewCallback paramCustomViewCallback)
-            {
-                if (this.mCustomView != null)
-                {
+            public void onShowCustomView(View paramView, WebChromeClient.CustomViewCallback paramCustomViewCallback) {
+                if (this.mCustomView != null) {
                     onHideCustomView();
                     return;
                 }
@@ -174,6 +184,11 @@ public class MainActivity extends Activity {
                         | View.SYSTEM_UI_FLAG_FULLSCREEN
                         | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                 );
+            }
+
+            public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
+                Log.d("WebView", consoleMessage.message());
+                return true;
             }
         });
         webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
