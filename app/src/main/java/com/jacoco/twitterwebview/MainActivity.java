@@ -4,13 +4,17 @@ import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.AudioManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -22,13 +26,19 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.FrameLayout;
+import android.widget.Spinner;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.regex.Pattern;
 
 public class MainActivity extends Activity {
@@ -38,6 +48,7 @@ public class MainActivity extends Activity {
     private final String mCameraPhotoPath = null;
     private AudioManager audioManager;
     private final Pattern photoUrl = Pattern.compile(".*/photo/\\d$");
+    private final Pattern statusUrl = Pattern.compile(".*/status/\\d*$");
 
     @SuppressLint("ClickableViewAccessibility")
     @Override
@@ -59,6 +70,35 @@ public class MainActivity extends Activity {
             }
         });
 
+        Spinner spinner = findViewById(R.id.spinner);
+
+        spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                String item = parent.getItemAtPosition(position).toString();
+                if(item.equals("Copy Current URL")) {
+                    String url = webView.getUrl();
+                    ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                    ClipData clip = ClipData.newPlainText(url, url);
+                    clipboard.setPrimaryClip(clip);
+                    Toast.makeText(getApplicationContext(), "Copied URL", Toast.LENGTH_SHORT).show();
+                } else if(item.equals("Reload")) {
+                    webView.reload();
+                }
+                parent.setSelection(0);
+            }
+
+            public void onNothingSelected(AdapterView<?> parent) {}
+        });
+
+        List<String> categories = new ArrayList<String>();
+        categories.add("Action: ");
+        categories.add("Copy Current URL");
+        categories.add("Reload");
+
+        ArrayAdapter<String> dataAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, categories);
+        dataAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        spinner.setAdapter(dataAdapter);
+
         verifyPermissions();
     }
 
@@ -72,7 +112,9 @@ public class MainActivity extends Activity {
         } else if(keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
             audioManager.adjustVolume(AudioManager.ADJUST_LOWER, AudioManager.FLAG_PLAY_SOUND);
         } else if(keyCode == KeyEvent.KEYCODE_VOLUME_MUTE) {
-            audioManager.adjustVolume(AudioManager.ADJUST_TOGGLE_MUTE, AudioManager.FLAG_PLAY_SOUND);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                audioManager.adjustVolume(AudioManager.ADJUST_TOGGLE_MUTE, AudioManager.FLAG_PLAY_SOUND);
+            }
         }
         else {
             finish();
@@ -81,6 +123,11 @@ public class MainActivity extends Activity {
     }
 
     private void setupView() {
+        // Weird workaround needed for the
+        // Open App button not being removed
+        // the first time after reload
+        final boolean[] firstStatus = {true};
+
         webView.setWebViewClient(new WebViewClient() {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 final String url = request.getUrl().toString();
@@ -104,6 +151,7 @@ public class MainActivity extends Activity {
                 webView.evaluateJavascript("document.addEventListener('scroll', () => {" +
                         "clearTimeout(removeAds._tId);" +
                         "removeAds._tId= setTimeout(removeAds, 100)})", null);
+                firstStatus[0] = true;
             }
         });
         WebSettings webSettings = webView.getSettings();
@@ -119,6 +167,23 @@ public class MainActivity extends Activity {
             private WebChromeClient.CustomViewCallback mCustomViewCallback;
             private int mOriginalOrientation;
             private int mOriginalSystemUiVisibility;
+
+            public void onProgressChanged(WebView view, int newProgress) {
+                String url = view.getUrl();
+                if(url.endsWith("/compose/tweet") || url.endsWith("/settings/profile")) {
+                    findViewById(R.id.spinner).setVisibility(View.GONE);
+                } else {
+                    findViewById(R.id.spinner).setVisibility(View.VISIBLE);
+                    if(statusUrl.matcher(webView.getUrl()).matches()) {
+                        Runnable runnable = () -> webView.evaluateJavascript("if(document.querySelector(\"div[aria-label=\\\"Open app\\\"]\")) document.querySelector(\"div[aria-label=\\\"Open app\\\"]\").remove()", null);
+                        if(firstStatus[0]) new Handler().postDelayed(runnable, 200);
+                        else runnable.run();
+                        firstStatus[0] = false;
+                    }
+                }
+
+                super.onProgressChanged(view, newProgress);
+            }
 
             public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> filePath, WebChromeClient.FileChooserParams fileChooserParams) {
                 if (mUploadMessage != null) {
